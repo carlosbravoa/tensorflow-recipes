@@ -1,2 +1,2 @@
 # tensorflow-recipes
-just playing with code
+Just playing with code to show working examples with TF
