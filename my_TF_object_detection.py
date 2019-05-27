@@ -1,7 +1,7 @@
 """A demo for object detection using TF models from the model zoo. 
 The intention was to have a single script able to run a model without
 the need of any other utility or dependency than cv2 on top of the regular ones.
-There is a lot of good code ready to use from the TF repo.
+There is a lot of better code ready to use from the TF repo (example: google visualization tools are so much better)
 Reference for this code: https://github.com/tensorflow/models/blob/master/research/object_detection/object_detection_tutorial.ipynb
 The model zoo: https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md
 
