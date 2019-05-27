@@ -7,6 +7,8 @@ The model zoo: https://github.com/tensorflow/models/blob/master/research/object_
 
 Download one of the models. The script will look for the frozen file. Add the labels in txt format and ready to go
 
+Example for run it:
+python my_TF_object_detection.py --model .\ssd_mobilenet_v2_coco_2018_03_29 --label .\ssd_mobilenet_v2_coco_2018_03_29\coco_labels.txt
 
 TODO: Adjustable threshold. Currently it displays all
 """
