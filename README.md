@@ -1,7 +1,7 @@
 # tensorflow-recipes
 Just playing with code to show working examples with TF
 
-## my_TF_object_tdetection.py
+## my_TF_object_detection.py
 A demo for object detection using TF models from the model zoo, as a totally standalone script (i.e. not needing any additional library than cv2 and the standard ones for tensorflow)
 
 This is just a working example, not even optimized, but it can get you running tf models without additional installations or set up.
