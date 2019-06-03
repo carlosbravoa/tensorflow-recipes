@@ -1,14 +1,12 @@
 """A demo for object detection using TF models from the model zoo. 
 The intention was to have a single script able to run a model without
 the need of any other utility or dependency than cv2 on top of the regular ones.
-There is a lot of better code ready to use from the TF repo (example: google visualization tools are so much better)
+There is a lot of good code ready to use from the TF repo.
 Reference for this code: https://github.com/tensorflow/models/blob/master/research/object_detection/object_detection_tutorial.ipynb
 The model zoo: https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md
 
 Download one of the models. The script will look for the frozen file. Add the labels in txt format and ready to go
 
-Example for run it:
-python my_TF_object_detection.py --model .\ssd_mobilenet_v2_coco_2018_03_29 --label .\ssd_mobilenet_v2_coco_2018_03_29\coco_labels.txt
 
 TODO: Adjustable threshold. Currently it displays all
 """
@@ -27,7 +25,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SIZE = 0.6
 FONT_THICKNESS = 1
 LINE_WEIGHT = 1
-SHOW_CONFIDENCE_IN_LABEL = False
+SHOW_CONFIDENCE_IN_LABEL = True
 
 def main():
     parser = argparse.ArgumentParser()
@@ -46,6 +44,7 @@ def main():
     # Initialize the camera
     camera = args.camera if args.camera else 0
     cam = cv2.VideoCapture(camera)
+    ##cam = cv2.VideoCapture('videoplayback2.mp4') ## If you want to capture from a video
 
     # Initialize model.
     MODEL_NAME = args.model
@@ -67,13 +66,16 @@ def main():
             serialized_graph = fid.read()
             od_graph_def.ParseFromString(serialized_graph)
             tf.import_graph_def(od_graph_def, name='')
-            
-            labels = read_label_file(PATH_TO_LABELS)
 
             # Get handles to input and output tensors
             print("Getting both ends of the model")
             input_tensor = get_input_tensor() #The image
             output_tensor = get_output_tensor() #The evaluation results
+
+            if PATH_TO_LABELS:
+                labels = read_label_file(PATH_TO_LABELS)
+            else:
+                labels = {}
 
             # Initialize the timer for fps
             start_time = time.time()
@@ -81,19 +83,24 @@ def main():
 
             # Start capturing
             print("Starting the camera")
-            while True:
+            #while True:
+            while(cam.isOpened()): 
                 ret, cv2_im = cam.read()
                 start_inference_time = time.time() * 1000
                 output_dict = identify_with_npimage(cv2_im, sess, output_tensor, input_tensor, threshold=0.05, top_k=10)
+                if SHOW_CONFIDENCE_IN_LABEL:
+                    confidence = output_dict['detection_scores']
+                else:
+                    confidence = {}
                 lastInferenceTime = time.time() * 1000 - start_inference_time
                 real_num_detection = int(output_dict['num_detections'])
                 #print("Objects detected: " + str(real_num_detection))
-                draw_rectangles(real_num_detection, output_dict['detection_boxes'], output_dict['detection_classes'], labels, cv2_im)
+                draw_rectangles(cv2_im, real_num_detection, output_dict['detection_boxes'], output_dict['detection_classes'], labels = labels, scores = confidence)
 
                 
                 frame_times.append(time.time())
                 fps = len(frame_times)/float(frame_times[-1] - frame_times[0] + 0.001)
-                draw_text(cv2_im, "{:.1f}fps / {:.2f}ms".format(fps, lastInferenceTime))
+                draw_text(cv2_im, "{:.1f}fps / {:.2f}ms".format(fps, lastInferenceTime) + "Detections: "+ str(real_num_detection))
                 #draw_text(cv2_im, "{:.1f}".format(fps))
 
                 # flipping the image: 
@@ -175,7 +182,7 @@ def read_label_file(file_path):
         ret[int(pair[0])] = pair[1].strip()
     return ret
 
-def draw_rectangles(num_detections, boxes, classes, labels, image_np):
+def draw_rectangles(image_np, num_detections, boxes, classes, labels={}, scores={}):
     i = 0
     im_height, im_width, channels = image_np.shape
     for box in boxes:
@@ -185,7 +192,15 @@ def draw_rectangles(num_detections, boxes, classes, labels, image_np):
         xmax = box[3] * im_width
 
         rectangle = [[xmin, ymin],[xmax, ymax]]
-        draw_single_rectangle(rectangle, image_np, labels[classes[i]-1])
+        if len(scores)>0:
+            score =  "({0:.2f})".format(scores[i])
+        else:
+            score = ""
+
+        if len(labels)>0:
+            draw_single_rectangle(rectangle, image_np, labels[classes[i]-1]  + score)
+        else:
+            draw_single_rectangle(rectangle, image_np, str(classes[i]) + score)
         i += 1
         if i >= num_detections:
             break
