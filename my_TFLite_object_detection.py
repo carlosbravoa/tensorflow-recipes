@@ -47,7 +47,7 @@ def main():
     # Initialize model. args.model should point to the tflite file
     MODEL_NAME = args.model
 
-    #read labels (pbtxt from model zoo)
+    #read labels (a simple txt file)
     PATH_TO_LABELS = args.label
 
     print("Starting interpreter")
@@ -67,9 +67,6 @@ def main():
     start_time = time.time()
     frame_times = deque(maxlen=40)
 
-    # Start capturing
-    print("Starting the camera")
-    #while True:
     while True:
         ret, cv2_im = cam.read()
 
