@@ -23,13 +23,12 @@ import tensorflow as tf
 #For webcam capture and drawing boxes
 import cv2
 
-
 # Parameters for visualizing the labels and boxes
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SIZE = 0.6
 FONT_THICKNESS = 1
 LINE_WEIGHT = 1
-SHOW_CONFIDENCE_IN_LABEL = True
+SHOW_CONFIDENCE_IN_LABEL = False
 
 def main():
     parser = argparse.ArgumentParser()
@@ -91,22 +90,33 @@ def main():
             while cam.isOpened():
                 ret, cv2_im = cam.read()
                 start_inference_time = time.time() * 1000
-                output_dict = identify_with_npimage(cv2_im, sess, output_tensor, input_tensor,
-                                                    threshold=0.05, top_k=10)
+
+                #This is where inference happens
+                output_dict = identify_with_npimage(cv2_im, 
+                                                    sess, 
+                                                    output_tensor, 
+                                                    input_tensor, 
+                                                    threshold=0.05, 
+                                                    top_k=10)
+
+                last_inference_time = time.time() * 1000 - start_inference_time
+
                 if SHOW_CONFIDENCE_IN_LABEL:
                     confidence = output_dict['detection_scores']
                 else:
                     confidence = {}
-                last_inference_time = time.time() * 1000 - start_inference_time
-                real_num_detection = int(output_dict['num_detections'])
-                #print("Objects detected: " + str(real_num_detection))
-                draw_rectangles(cv2_im, real_num_detection, output_dict['detection_boxes'],
-                                output_dict['detection_classes'], labels=labels,
+
+                real_num_detection = output_dict['num_detections']
+                draw_rectangles(cv2_im, 
+                                real_num_detection, 
+                                output_dict['detection_boxes'],
+                                output_dict['detection_classes'], 
+                                labels=labels,
                                 scores=confidence)
 
                 frame_times.append(time.time())
                 fps = len(frame_times)/float(frame_times[-1] - frame_times[0] + 0.001)
-                draw_text(cv2_im, "{:.1f}fps / {:.2f}ms".format(fps, last_inference_time) + "Detections: "+ str(real_num_detection))
+                draw_text(cv2_im, "{:.1f}fps / {:.2f}ms".format(fps, last_inference_time) + " Detections: "+ str(real_num_detection))
                 #draw_text(cv2_im, "{:.1f}".format(fps))
 
                 # flipping the image:
