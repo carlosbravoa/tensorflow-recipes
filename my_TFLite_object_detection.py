@@ -76,7 +76,12 @@ def main():
         start_inference_time = time.time() * 1000
 
         #This is where inference happens
-        output_dict = identify_with_npimage(cv2_im, interpreter, input_details, output_details, threshold=0.5)
+        output_dict = identify_with_npimage(cv2_im,
+                                            interpreter,
+                                            input_details,
+                                            output_details,
+                                            threshold=0.5)
+
         last_inference_time = time.time() * 1000 - start_inference_time
 
         if SHOW_CONFIDENCE_IN_LABEL:
@@ -85,7 +90,12 @@ def main():
             confidence = {}
 
         real_num_detection = output_dict['num_detections']
-        draw_rectangles(cv2_im, real_num_detection, output_dict['detection_boxes'], output_dict['detection_classes'], confidence, labels = labels)
+        draw_rectangles(cv2_im,
+                        real_num_detection,
+                        output_dict['detection_boxes'],
+                        output_dict['detection_classes'],
+                        confidence,
+                        labels=labels)
 
         frame_times.append(time.time())
         fps = len(frame_times)/float(frame_times[-1] - frame_times[0] + 0.001)
