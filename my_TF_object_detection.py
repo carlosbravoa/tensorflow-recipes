@@ -5,19 +5,23 @@ There is a lot of good code ready to use from the TF repo.
 Reference for this code:
 https://github.com/tensorflow/models/blob/master/research/object_detection/object_detection_tutorial.ipynb
 
-The model zoo: 
+The model zoo:
 https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md
 
-Download one of the models. The script will look for the frozen file.
-Add the labels in txt format and ready to go
+Download one of the models and load the model with --model path/to/frozen_model.pb
+Optional: Add the labels in txt format
 
-
-TODO: Adjustable threshold. Currently it displays all
 """
-import argparse
-import numpy as np
 import time
+import argparse
 from collections import deque
+
+# Libs used for saving images and outputs
+from pathlib import Path
+import uuid
+
+# For TF
+import numpy as np
 import tensorflow as tf
 
 #For webcam capture and drawing boxes
@@ -28,7 +32,10 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SIZE = 0.6
 FONT_THICKNESS = 1
 LINE_WEIGHT = 1
-SHOW_CONFIDENCE_IN_LABEL = False
+SHOW_CONFIDENCE_IN_LABEL = True
+IMAGE_OUTPUT_FOLDER = Path('savedimages') # for saving detected images
+SAVE_RESULT_IMAGES = False #This is for saving the detected images on disk
+# Use case: To be able to use a model zoo for generating data for re-trainng other models
 
 def main():
     parser = argparse.ArgumentParser()
@@ -47,12 +54,10 @@ def main():
     # Initialize the camera
     camera = args.camera if args.camera else 0
     cam = cv2.VideoCapture(camera)
-    ##cam = cv2.VideoCapture('videoplayback2.mp4') ## If you want to capture from a video
+    #cam = cv2.VideoCapture('videoplayback2.mp4') ## If you want to capture from a video
 
-    # Initialize model.
-    MODEL_NAME = args.model
-    # Path to frozen detection graph. This is the model that is used for the object detection.
-    PATH_TO_FROZEN_GRAPH = MODEL_NAME + '/frozen_inference_graph.pb'
+    # _path to frozen detection graph.
+    PATH_TO_FROZEN_GRAPH = args.model
 
     #read labels (pbtxt from model zoo)
     PATH_TO_LABELS = args.label
@@ -62,9 +67,11 @@ def main():
 
     sess = tf.Session(graph=detection_graph)
 
+    print("Loading frozen graph")
+
     with detection_graph.as_default():
         od_graph_def = tf.GraphDef()
-        print("Loading frozen graph")
+
         with tf.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
             serialized_graph = fid.read()
             od_graph_def.ParseFromString(serialized_graph)
@@ -92,11 +99,11 @@ def main():
                 start_inference_time = time.time() * 1000
 
                 #This is where inference happens
-                output_dict = identify_with_npimage(cv2_im, 
-                                                    sess, 
-                                                    output_tensor, 
-                                                    input_tensor, 
-                                                    threshold=0.05, 
+                output_dict = identify_with_npimage(cv2_im,
+                                                    sess,
+                                                    output_tensor,
+                                                    input_tensor,
+                                                    threshold=0.05,
                                                     top_k=10)
 
                 last_inference_time = time.time() * 1000 - start_inference_time
@@ -107,16 +114,17 @@ def main():
                     confidence = {}
 
                 real_num_detection = output_dict['num_detections']
-                draw_rectangles(cv2_im, 
-                                real_num_detection, 
+                draw_rectangles(cv2_im,
+                                real_num_detection,
                                 output_dict['detection_boxes'],
-                                output_dict['detection_classes'], 
-                                labels=labels,
-                                scores=confidence)
+                                output_dict['detection_classes'],
+                                confidence,
+                                labels=labels)
 
                 frame_times.append(time.time())
                 fps = len(frame_times)/float(frame_times[-1] - frame_times[0] + 0.001)
-                draw_text(cv2_im, "{:.1f}fps / {:.2f}ms".format(fps, last_inference_time) + " Detections: "+ str(real_num_detection))
+                fps_line = "{:.1f}fps / {:.2f}ms".format(fps, last_inference_time)
+                draw_text(cv2_im, fps_line + " Detections: "+ str(real_num_detection))
                 #draw_text(cv2_im, "{:.1f}".format(fps))
 
                 # flipping the image:
@@ -190,8 +198,8 @@ def load_pil_image_into_numpy_array(image):
     return np.array(image.getdata()).reshape(
         (im_height, im_width, 3)).astype(np.uint8)
 
-def read_label_file(file_path):
-    with open(file_path, 'r') as file:
+def read_label_file(file__path):
+    with open(file__path, 'r') as file:
         lines = file.readlines()
     ret = {}
     for line in lines:
@@ -199,49 +207,100 @@ def read_label_file(file_path):
         ret[int(pair[0])] = pair[1].strip()
     return ret
 
-def draw_rectangles(image_np, num_detections, boxes, classes, labels={}, scores={}):
+def draw_rectangles(image_np, num_detections, boxes, classes, scores, labels={}):
+    min_confidence = 0.2
     i = 0
     im_height, im_width, channels = image_np.shape
+
+    if SAVE_RESULT_IMAGES and scores[i] > min_confidence:
+        image_filename = save_image(image_np)
+    else:
+        image_filename = None
+
     for box in boxes:
-        ymin = box[0] * im_height
-        xmin = box[1] * im_width
-        ymax = box[2] * im_height
-        xmax = box[3] * im_width
+        if scores[i] > min_confidence:
 
-        rectangle = [[xmin, ymin], [xmax, ymax]]
-        if len(scores) > 0:
-            score = "({0:.2f})".format(scores[i])
-        else:
-            score = ""
+            ymin = box[0] * im_height
+            xmin = box[1] * im_width
+            ymax = box[2] * im_height
+            xmax = box[3] * im_width
 
-        if len(labels) > 0:
-            draw_single_rectangle(rectangle, image_np, labels[classes[i]-1]  + score)
-        else:
-            draw_single_rectangle(rectangle, image_np, str(classes[i]) + score)
-        i += 1
-        if i >= num_detections:
-            break
+            rectangle = [[xmin, ymin], [xmax, ymax]]
+
+            # For saving the box and writing the csv-boxes for the original image
+            if SAVE_RESULT_IMAGES:
+                save_boxes(image_np, rectangle, image_filename)
+
+            if len(scores) > 0:
+                score = "({0:.2f})".format(scores[i])
+            else:
+                score = ""
+
+            if len(labels) > 0:
+                draw_single_rectangle(rectangle, image_np, labels[classes[i]]  + score)
+            else:
+                draw_single_rectangle(rectangle, image_np, str(classes[i]) + score)
+            i += 1
+            if i >= num_detections:
+                break
 
 def draw_single_rectangle(rectangle, image_np, label=None):
-    BOXCOLOR = (255, 0, 0)
+    box_color = (255, 0, 0)
     p1 = (int(rectangle[0][0]), int(rectangle[0][1]))
     p2 = (int(rectangle[1][0]), int(rectangle[1][1]))
-    cv2.rectangle(image_np, p1, p2, color=BOXCOLOR, thickness=LINE_WEIGHT)
+
+    cv2.rectangle(image_np, p1, p2, color=box_color, thickness=LINE_WEIGHT)
     if label:
         size = cv2.getTextSize(label, FONT, FONT_SIZE, FONT_THICKNESS)
         center = p1[0] + 5, p1[1] + 5 + size[0][1]
         pt2 = p1[0] + 10 + size[0][0], p1[1] + 10 + size[0][1]
         cv2.rectangle(image_np, p1, pt2, color=(255, 0, 0), thickness=-1)
 
-        cv2.putText(image_np, label, center, FONT, FONT_SIZE, (255, 255, 255), 
+        cv2.putText(image_np, label, center, FONT, FONT_SIZE, (255, 255, 255),
                     FONT_THICKNESS, cv2.LINE_AA)
-    #imgname = str(time.time())
-    #cv2.imwrite('/home/pi/development/Coral-TPU/imgs/' + imgname + '.jpg', image_np)
+
 
 def draw_text(image_np, label, pos=0):
     p1 = (0, pos*30+20)
     #cv2.rectangle(image_np, (p1[0], p1[1]-20), (800, p1[1]+10), color=(0, 255, 0), thickness=-1)
     cv2.putText(image_np, label, p1, FONT, FONT_SIZE, (0, 255, 0), 1, cv2.LINE_AA)
+
+def save_image(image_np):
+    uuid_ = str(uuid.uuid4())
+    img_filename = uuid_ + '.jpg'
+
+    #The full image
+    image_path = str(IMAGE_OUTPUT_FOLDER / img_filename)
+
+    cv2.imwrite(image_path, image_np)
+
+    return img_filename
+
+
+def save_boxes(image_np, rectangle, img_filename):
+    p1 = (int(rectangle[0][0]), int(rectangle[0][1]))
+    p2 = (int(rectangle[1][0]), int(rectangle[1][1]))
+
+    uuid_ = str(uuid.uuid4())
+
+    facebox_filename = uuid_ + '-box.jpg'
+    facebox_path = str(IMAGE_OUTPUT_FOLDER / facebox_filename)
+
+    csv_filename = "image_list.csv"
+    csv_path = str(IMAGE_OUTPUT_FOLDER / csv_filename)
+
+    #The box content only for training a classification model
+    face_img = image_np[p1[1]:p2[1], p1[0]:p2[0]]
+    cv2.imwrite(facebox_path, face_img)
+
+    #The box coordinates + filename for retraining an object detection model
+    # (This should be a sub process anyway)
+    (h, w, d) = image_np.shape
+    # filename  width   height  class   xmin    ymin    xmax    ymax
+    newline = img_filename + ",{0},{1},tbd,{2},{3},{4},{5}\n".format(w, h, p1[0], p1[1], p2[0], p2[1])
+    with open(csv_path, "a+") as file:
+        file.write(newline)
+    file.close()
 
 if __name__ == '__main__':
     main()
